@@ -40,3 +40,9 @@ variable "root_volume_gb" {
   type        = number
   default     = 30
 }
+
+variable "bedrock_model_id" {
+  description = "Foundation model used by the AI SRE agent (invoked through the US cross-region inference profile)"
+  type        = string
+  default     = "amazon.nova-micro-v1:0"
+}

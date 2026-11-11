@@ -30,7 +30,7 @@ flowchart LR
   api --> sqs --> worker --> rds
   obs -- alert --> agent
   agent --> bedrock
-  agent -- fix as pull request --> human[Engineer approves]
+  agent -- incident issue + proposed fix --> human[Engineer approves]
 ```
 
 ## Roadmap
@@ -38,9 +38,9 @@ flowchart LR
 Each phase ships as its own pull request and write-up.
 
 - [x] **1. Foundation**: remote state, budget alerts, VPC, Kubernetes cluster, ECR, GitHub Actions with OIDC (no static keys)
-- [ ] **2. Application**: orders API and worker in containers, SQS with Dead Letter Queue and alarm, PostgreSQL, images built by CI and pushed to ECR via OIDC *(in progress)*; GitOps with ArgoCD next
-- [ ] **3. Observability and SLOs**: Prometheus, Grafana, SLOs with error budgets and multi-window burn-rate alerts ([docs/slo.md](docs/slo.md)) *(in progress)*
-- [ ] **4. AI SRE agent**: on alert, collects logs, events and metrics, asks an LLM on Amazon Bedrock for a root-cause hypothesis and opens a pull request with the fix; nothing is applied without approval
+- [x] **2. Application**: orders API and worker in containers, SQS with Dead Letter Queue and alarm, PostgreSQL, images built by CI and pushed to ECR via OIDC
+- [x] **3. Observability and SLOs**: Prometheus, Grafana, SLOs with error budgets and multi-window burn-rate alerts ([docs/slo.md](docs/slo.md))
+- [ ] **4. AI SRE agent**: on alert, collects pods, events, logs, SLIs and queue depth with read-only access, asks Amazon Bedrock (Nova Micro) for a root-cause hypothesis and opens a GitHub issue with a proposed fix; nothing is applied without approval ([docs/sre-agent.md](docs/sre-agent.md)) *(in progress)*
 - [ ] **5. Chaos and post-mortem**: inject failures, measure detection and recovery, publish the post-mortem and the total cost
 
 ## Repository structure
@@ -54,12 +54,15 @@ terraform/
 apps/
   orders-api/    # FastAPI: stores the order, publishes it to SQS, /metrics
   worker/        # consumes SQS, idempotent processing, retries -> DLQ
+  sre-agent/     # Alertmanager webhook -> evidence -> Bedrock -> GitHub issue
 k8s/app/         # PostgreSQL, API, worker, ingress (kustomize)
 k8s/observability/ # kube-prometheus-stack values, PodMonitors, SLO rules, Grafana dashboard
+k8s/sre-agent/   # agent deployment with read-only RBAC on the orders namespace
 scripts/
   deploy-app.sh  # runs on the node: secrets, config, ECR images, rollout
   deploy-observability.sh # Prometheus, Grafana, SLO rules and dashboard
   generate-traffic.sh     # steady order traffic for the dashboards
+  deploy-agent.sh         # AI SRE agent + Alertmanager webhook
 docs/
   adr/           # architecture decision records
 .github/workflows/
@@ -156,6 +159,16 @@ Use `instance_type = "c7i-flex.large"` (4 GB) in `terraform/cluster/terraform.tf
 kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE=0.2
 ```
 
+### 7. AI SRE agent
+
+Optional: a fine-grained GitHub token with **Issues: read and write** on this repository only, so the agent can open incident issues.
+
+```bash
+GITHUB_TOKEN=github_pat_... ./scripts/deploy-agent.sh
+kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE=0.3   # trigger the fast-burn alert
+# a few minutes later: a new issue "[Incident] OrdersApiAvailabilityFastBurn: ..."
+```
+
 ## Design decisions
 
 | Decision | Why |
@@ -170,6 +183,7 @@ kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE=0.2
 | SQS with DLQ (3 attempts) + alarm | Failed orders are never lost; a message in the DLQ alerts by e-mail. |
 | Idempotent worker | An order already processed is skipped, so SQS at-least-once delivery is safe. |
 | PostgreSQL in the cluster | No RDS hourly cost; trade-offs in [ADR 0002](docs/adr/0002-database-and-pod-credentials.md). |
+| AI agent recommends, humans decide | Read-only RBAC, one Bedrock model, fixed JSON output; fixes are proposed in an issue, never applied ([docs/sre-agent.md](docs/sre-agent.md)). |
 | SLO-based alerting | Pages on error-budget burn rate (14.4x / 6x, two windows each), not on single errors ([docs/slo.md](docs/slo.md)). |
 | Hardened pods | Non-root, read-only root filesystem, no Linux capabilities, resource limits, probes. |
 | No SSH, no public Kubernetes API | Access through SSM Session Manager; only ports 80/443 are open. |

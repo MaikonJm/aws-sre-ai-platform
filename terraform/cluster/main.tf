@@ -166,3 +166,25 @@ resource "aws_iam_role_policy" "orders_queue" {
   role   = aws_iam_role.node.id
   policy = data.aws_iam_policy_document.orders_queue.json
 }
+
+# ---------- AI SRE agent: one model, invoke only ----------
+
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "bedrock" {
+  statement {
+    sid     = "InvokeAgentModel"
+    actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+    resources = [
+      "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:inference-profile/us.${var.bedrock_model_id}",
+      # the US inference profile may route the call to any US region
+      "arn:aws:bedrock:*::foundation-model/${var.bedrock_model_id}",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "bedrock" {
+  name   = "bedrock-agent-model"
+  role   = aws_iam_role.node.id
+  policy = data.aws_iam_policy_document.bedrock.json
+}
