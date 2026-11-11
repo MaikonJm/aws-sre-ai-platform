@@ -39,7 +39,7 @@ Each phase ships as its own pull request and write-up.
 
 - [x] **1. Foundation**: remote state, budget alerts, VPC, Kubernetes cluster, ECR, GitHub Actions with OIDC (no static keys)
 - [ ] **2. Application**: orders API and worker in containers, SQS with Dead Letter Queue and alarm, PostgreSQL, images built by CI and pushed to ECR via OIDC *(in progress)*; GitOps with ArgoCD next
-- [ ] **3. Observability and SLOs**: Prometheus, Grafana, OpenTelemetry tracing, SLOs with error budgets and burn-rate alerts
+- [ ] **3. Observability and SLOs**: Prometheus, Grafana, SLOs with error budgets and multi-window burn-rate alerts ([docs/slo.md](docs/slo.md)) *(in progress)*
 - [ ] **4. AI SRE agent**: on alert, collects logs, events and metrics, asks an LLM on Amazon Bedrock for a root-cause hypothesis and opens a pull request with the fix; nothing is applied without approval
 - [ ] **5. Chaos and post-mortem**: inject failures, measure detection and recovery, publish the post-mortem and the total cost
 
@@ -55,8 +55,11 @@ apps/
   orders-api/    # FastAPI: stores the order, publishes it to SQS, /metrics
   worker/        # consumes SQS, idempotent processing, retries -> DLQ
 k8s/app/         # PostgreSQL, API, worker, ingress (kustomize)
+k8s/observability/ # kube-prometheus-stack values, PodMonitors, SLO rules, Grafana dashboard
 scripts/
   deploy-app.sh  # runs on the node: secrets, config, ECR images, rollout
+  deploy-observability.sh # Prometheus, Grafana, SLO rules and dashboard
+  generate-traffic.sh     # steady order traffic for the dashboards
 docs/
   adr/           # architecture decision records
 .github/workflows/
@@ -141,6 +144,18 @@ curl -s -X POST localhost/orders -H 'content-type: application/json' \
   -d '{"item":"broken","quantity":1,"amount":"-1"}'
 ```
 
+### 6. Observability and SLOs
+
+Use `instance_type = "c7i-flex.large"` (4 GB) in `terraform/cluster/terraform.tfvars` for this step. On the node:
+
+```bash
+./scripts/deploy-observability.sh     # prints the Grafana URL and how to read the password
+./scripts/generate-traffic.sh 10 5    # 10 minutes at ~5 orders/s
+
+# break the SLO on purpose and watch the burn-rate alert fire
+kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE=0.2
+```
+
 ## Design decisions
 
 | Decision | Why |
@@ -155,6 +170,7 @@ curl -s -X POST localhost/orders -H 'content-type: application/json' \
 | SQS with DLQ (3 attempts) + alarm | Failed orders are never lost; a message in the DLQ alerts by e-mail. |
 | Idempotent worker | An order already processed is skipped, so SQS at-least-once delivery is safe. |
 | PostgreSQL in the cluster | No RDS hourly cost; trade-offs in [ADR 0002](docs/adr/0002-database-and-pod-credentials.md). |
+| SLO-based alerting | Pages on error-budget burn rate (14.4x / 6x, two windows each), not on single errors ([docs/slo.md](docs/slo.md)). |
 | Hardened pods | Non-root, read-only root filesystem, no Linux capabilities, resource limits, probes. |
 | No SSH, no public Kubernetes API | Access through SSM Session Manager; only ports 80/443 are open. |
 | IMDSv2 required, encrypted disk | Blocks metadata credential theft; data at rest is encrypted. |
