@@ -1,13 +1,53 @@
 #!/bin/bash
 set -euxo pipefail
 
-# Install a pinned k3s release. The kubeconfig is readable by the ubuntu user
-# so kubectl works right after "aws ssm start-session".
+# ---------- k3s ----------
+# Pinned release; kubeconfig readable so kubectl works for the SSM user.
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" sh -s - \
   --write-kubeconfig-mode 644
+echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' > /etc/profile.d/k3s.sh
 
-# kubectl for the ubuntu user
-echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> /home/ubuntu/.bashrc
-
-# Helm, used by the next phases (ArgoCD, monitoring)
+# ---------- Tools ----------
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+snap install aws-cli --classic
+
+# ---------- ECR pull secret ----------
+# ECR tokens expire after 12 hours. A systemd timer refreshes the
+# image pull secret every 6 hours using the node's IAM role.
+cat > /usr/local/bin/refresh-ecr-secret <<'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+NAMESPACE=orders
+kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || exit 0
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION="$${AWS_REGION:-us-east-1}"
+REGISTRY="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
+kubectl -n "$NAMESPACE" create secret docker-registry ecr-pull \
+  --docker-server="$REGISTRY" --docker-username=AWS \
+  --docker-password="$(aws ecr get-login-password --region "$REGION")" \
+  --dry-run=client -o yaml | kubectl apply -f -
+SCRIPT
+chmod +x /usr/local/bin/refresh-ecr-secret
+
+cat > /etc/systemd/system/refresh-ecr-secret.service <<'UNIT'
+[Unit]
+Description=Refresh the ECR image pull secret
+[Service]
+Type=oneshot
+Environment=AWS_REGION=${region}
+ExecStart=/usr/local/bin/refresh-ecr-secret
+UNIT
+
+cat > /etc/systemd/system/refresh-ecr-secret.timer <<'UNIT'
+[Unit]
+Description=Refresh the ECR image pull secret every 6 hours
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=6h
+[Install]
+WantedBy=timers.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now refresh-ecr-secret.timer
