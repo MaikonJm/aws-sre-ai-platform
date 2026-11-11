@@ -1,7 +1,7 @@
 # ADR 0001: Kubernetes runtime on a limited budget
 
-- **Status:** Proposed
-- **Date:** 2026-11-10
+- **Status:** Accepted
+- **Date:** 2026-11-11
 
 ## Context
 
@@ -16,7 +16,14 @@ The platform runs on an AWS account with about US$ 133 in credits and 87 days le
 
 ## Decision
 
-To be confirmed after checking which services the account plan allows. Guardrails apply either way:
+**k3s on a single EC2 instance** (`t3.small` by default, Ubuntu 24.04), restricted to AWS Free plan eligible instance types.
+
+- Cost: one `t3.small` costs about US$ 0.02/hour, paid from credits, versus the EKS control plane plus nodes.
+- Availability: works on the AWS Free plan, which may restrict managed services.
+- Portability: k3s is a certified Kubernetes distribution, so manifests, Helm charts and ArgoCD work the same as on EKS.
+- Access without SSH: the node is managed through SSM Session Manager; the Kubernetes API is not exposed to the internet.
+
+Guardrails:
 
 - Every working session ends with `terraform destroy`.
 - No NAT gateway: nodes in public subnets with locked-down security groups, or VPC endpoints.
@@ -24,4 +31,4 @@ To be confirmed after checking which services the account plan allows. Guardrail
 
 ## Consequences
 
-The application, GitOps and observability layers are written against the Kubernetes API only, so they run unchanged on either option.
+The application, GitOps and observability layers are written against the Kubernetes API only, so moving to EKS later means replacing one Terraform stack. The trade-off accepted for this project is a single node with no control-plane high availability; in production this would be EKS across at least two Availability Zones.
