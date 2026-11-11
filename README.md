@@ -162,7 +162,7 @@ kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE=0.2
 | --- | --- |
 | No NAT gateway | A NAT gateway bills every hour plus per GB. Nodes run in public subnets behind security groups; databases sit in private subnets with no internet route. |
 | S3 gateway endpoint | S3 traffic stays on the AWS network at no cost. |
-| GitHub Actions via OIDC | Short-lived credentials scoped to this repository; no access keys stored anywhere. |
+| GitHub Actions via OIDC | Short-lived credentials scoped to this repository through GitHub's immutable subject claim (`owner@id/repo@id`); no access keys stored anywhere. |
 | Read-only CI role | `terraform plan` runs in CI with read access; `apply` stays a deliberate human action. |
 | Immutable image tags + scan on push | A tag always means the same build, and every image is scanned for CVEs. |
 | Native S3 state locking | `use_lockfile = true` replaces the DynamoDB lock table. |
