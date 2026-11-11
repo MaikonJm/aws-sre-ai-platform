@@ -1,0 +1,2 @@
+state_bucket = "aws-sre-ai-platform-tfstate-ACCOUNT_ID"
+# instance_type = "c7i-flex.large"   # 4 GB, for sessions running the monitoring stack (phase 3)

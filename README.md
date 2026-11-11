@@ -49,6 +49,7 @@ Each phase ships as its own pull request and write-up.
 terraform/
   bootstrap/     # run once: remote-state bucket + budget alerts (local state)
   foundation/    # VPC (2 AZs, no NAT), ECR repositories, GitHub Actions OIDC role
+  cluster/       # single-node k3s on EC2, SSM access only (no SSH)
 docs/
   adr/           # architecture decision records
 .github/workflows/
@@ -87,6 +88,22 @@ terraform apply
 
 The VPC, subnets, route tables, S3 endpoint, ECR and IAM resources have no hourly cost; they can stay up between sessions.
 
+### 3. Cluster
+
+```bash
+cd terraform/cluster
+cp backend.hcl.example backend.hcl            # same ACCOUNT_ID
+cp terraform.tfvars.example terraform.tfvars  # same state bucket
+terraform init -backend-config=backend.hcl
+terraform apply
+
+# open a shell on the node (no SSH) and check the cluster
+aws ssm start-session --target $(terraform output -raw instance_id)
+kubectl get nodes
+```
+
+The cluster is the only stack with an hourly cost: run `terraform destroy` here at the end of every session.
+
 ## Design decisions
 
 | Decision | Why |
@@ -97,6 +114,9 @@ The VPC, subnets, route tables, S3 endpoint, ECR and IAM resources have no hourl
 | Read-only CI role | `terraform plan` runs in CI with read access; `apply` stays a deliberate human action. |
 | Immutable image tags + scan on push | A tag always means the same build, and every image is scanned for CVEs. |
 | Native S3 state locking | `use_lockfile = true` replaces the DynamoDB lock table. |
+| k3s on EC2 instead of EKS | Fraction of the cost, same Kubernetes API ([ADR 0001](docs/adr/0001-kubernetes-runtime.md)). |
+| No SSH, no public Kubernetes API | Access through SSM Session Manager; only ports 80/443 are open. |
+| IMDSv2 required, encrypted disk | Blocks metadata credential theft; data at rest is encrypted. |
 
 ---
 

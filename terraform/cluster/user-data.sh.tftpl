@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euxo pipefail
+
+# Install a pinned k3s release. The kubeconfig is readable by the ubuntu user
+# so kubectl works right after "aws ssm start-session".
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" sh -s - \
+  --write-kubeconfig-mode 644
+
+# kubectl for the ubuntu user
+echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> /home/ubuntu/.bashrc
+
+# Helm, used by the next phases (ArgoCD, monitoring)
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
