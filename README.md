@@ -48,6 +48,7 @@ Each phase ships as its own pull request and write-up.
 ```text
 terraform/
   bootstrap/     # run once: remote-state bucket + budget alerts (local state)
+  foundation/    # VPC (2 AZs, no NAT), ECR repositories, GitHub Actions OIDC role
 docs/
   adr/           # architecture decision records
 .github/workflows/
@@ -73,6 +74,29 @@ terraform apply
 ```
 
 Confirm the subscription e-mail AWS Budgets sends you.
+
+### 2. Foundation
+
+```bash
+cd terraform/foundation
+cp backend.hcl.example backend.hcl            # use the state_bucket output from bootstrap
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+```
+
+The VPC, subnets, route tables, S3 endpoint, ECR and IAM resources have no hourly cost; they can stay up between sessions.
+
+## Design decisions
+
+| Decision | Why |
+| --- | --- |
+| No NAT gateway | A NAT gateway bills every hour plus per GB. Nodes run in public subnets behind security groups; databases sit in private subnets with no internet route. |
+| S3 gateway endpoint | S3 traffic stays on the AWS network at no cost. |
+| GitHub Actions via OIDC | Short-lived credentials scoped to this repository; no access keys stored anywhere. |
+| Read-only CI role | `terraform plan` runs in CI with read access; `apply` stays a deliberate human action. |
+| Immutable image tags + scan on push | A tag always means the same build, and every image is scanned for CVEs. |
+| Native S3 state locking | `use_lockfile = true` replaces the DynamoDB lock table. |
 
 ---
 

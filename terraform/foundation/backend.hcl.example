@@ -1,0 +1,6 @@
+# Copy to backend.hcl and replace ACCOUNT_ID (output "state_bucket" of the bootstrap stack)
+bucket       = "aws-sre-ai-platform-tfstate-ACCOUNT_ID"
+key          = "foundation/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true # native S3 locking, no DynamoDB table needed
