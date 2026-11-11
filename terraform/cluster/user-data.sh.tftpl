@@ -18,15 +18,16 @@ cat > /usr/local/bin/refresh-ecr-secret <<'SCRIPT'
 #!/bin/bash
 set -euo pipefail
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-NAMESPACE=orders
-kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || exit 0
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REGION="$${AWS_REGION:-us-east-1}"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REGISTRY="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
-kubectl -n "$NAMESPACE" create secret docker-registry ecr-pull \
-  --docker-server="$REGISTRY" --docker-username=AWS \
-  --docker-password="$(aws ecr get-login-password --region "$REGION")" \
-  --dry-run=client -o yaml | kubectl apply -f -
+PASSWORD=$(aws ecr get-login-password --region "$REGION")
+for NAMESPACE in $${NAMESPACES:-orders sre-agent}; do
+  kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || continue
+  kubectl -n "$NAMESPACE" create secret docker-registry ecr-pull \
+    --docker-server="$REGISTRY" --docker-username=AWS --docker-password="$PASSWORD" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
 SCRIPT
 chmod +x /usr/local/bin/refresh-ecr-secret
 

@@ -25,11 +25,18 @@ jobs:
           pip install ruff
           ruff check --select E,F,W,B --ignore E501 apps
 
+      - name: Unit tests (sre-agent)
+        working-directory: apps/sre-agent
+        run: |
+          pip install -r requirements.txt pytest
+          AWS_DEFAULT_REGION=us-east-1 python -m pytest -q tests
+
       - name: Validate Kubernetes manifests
         run: |
           curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
           ./kubeconform -strict -summary -ignore-filename-pattern kustomization k8s/app
           ./kubeconform -summary -ignore-missing-schemas -ignore-filename-pattern values k8s/observability
+          ./kubeconform -summary -ignore-missing-schemas -ignore-filename-pattern kustomization k8s/sre-agent
 
   build:
     needs: lint
@@ -39,7 +46,7 @@ jobs:
       id-token: write # OIDC token to assume the AWS role
     strategy:
       matrix:
-        service: [orders-api, worker]
+        service: [orders-api, worker, sre-agent]
     env:
       PUSH: ${{ github.event_name != 'pull_request' }}
     steps:

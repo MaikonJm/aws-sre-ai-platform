@@ -44,8 +44,15 @@ alertmanager:
       routes:
         - receiver: "null"
           matchers: ['alertname = "Watchdog"']
+        # SLO and application alerts go to the AI SRE agent (phase 4)
+        - receiver: sre-agent
+          matchers: ['severity =~ "page|ticket"', 'namespace = "orders"']
     receivers:
       - name: "null"
+      - name: sre-agent
+        webhook_configs:
+          - url: http://sre-agent.sre-agent.svc:8080/alertmanager
+            send_resolved: false
 
 grafana:
   admin:

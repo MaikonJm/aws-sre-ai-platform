@@ -31,5 +31,5 @@ variable "github_oidc_subject_prefix" {
 variable "ecr_repositories" {
   description = "Container image repositories, one per service"
   type        = set(string)
-  default     = ["orders-api", "worker"]
+  default     = ["orders-api", "worker", "sre-agent"]
 }
