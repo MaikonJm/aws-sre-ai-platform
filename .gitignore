@@ -1,0 +1,17 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+*.tfplan
+crash.log
+.terraform.lock.hcl.bak
+
+# Secrets and local files
+.env
+*.pem
+kubeconfig*
+.DS_Store
+__pycache__/
+node_modules/
