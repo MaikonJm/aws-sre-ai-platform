@@ -102,6 +102,7 @@ resource "aws_instance" "k3s" {
 
   user_data = templatefile("${path.module}/user-data.sh.tftpl", {
     k3s_version = var.k3s_version
+    region      = var.region
   })
   user_data_replace_on_change = true
 
@@ -122,4 +123,46 @@ resource "aws_instance" "k3s" {
   lifecycle {
     ignore_changes = [ami] # a new AMI must not recreate the cluster by surprise
   }
+}
+
+# ---------- Application permissions ----------
+# On k3s there is no IRSA/Pod Identity, so the pods use the node role.
+# Permissions stay scoped to the project's queues only.
+# In production (EKS) this would move to a per-service role.
+
+data "terraform_remote_state" "messaging" {
+  backend = "s3"
+
+  config = {
+    bucket = var.state_bucket
+    key    = "messaging/terraform.tfstate"
+    region = var.region
+  }
+}
+
+data "aws_iam_policy_document" "orders_queue" {
+  statement {
+    sid = "OrdersQueue"
+    actions = [
+      "sqs:SendMessage",
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:ChangeMessageVisibility",
+      "sqs:GetQueueAttributes",
+      "sqs:GetQueueUrl",
+    ]
+    resources = [data.terraform_remote_state.messaging.outputs.orders_queue_arn]
+  }
+
+  statement {
+    sid       = "InspectDlq"
+    actions   = ["sqs:ReceiveMessage", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"]
+    resources = [data.terraform_remote_state.messaging.outputs.orders_dlq_arn]
+  }
+}
+
+resource "aws_iam_role_policy" "orders_queue" {
+  name   = "orders-queue"
+  role   = aws_iam_role.node.id
+  policy = data.aws_iam_policy_document.orders_queue.json
 }

@@ -1,0 +1,69 @@
+name: App CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["apps/**", "k8s/**", ".github/workflows/app-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["apps/**", "k8s/**", ".github/workflows/app-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lint
+        run: |
+          pip install ruff
+          ruff check --select E,F,W,B --ignore E501 apps
+
+      - name: Validate Kubernetes manifests
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -strict -summary -ignore-filename-pattern kustomization k8s/app
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token to assume the AWS role
+    strategy:
+      matrix:
+        service: [orders-api, worker]
+    env:
+      PUSH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t ${{ matrix.service }}:ci apps/${{ matrix.service }}
+
+      # Pull requests stop here; main publishes to ECR with short-lived credentials
+      - name: Configure AWS credentials (OIDC)
+        if: env.PUSH == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/aws-sre-ai-platform-github-ci
+          aws-region: us-east-1
+
+      - name: Log in to Amazon ECR
+        if: env.PUSH == 'true'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push image (tag = commit SHA)
+        if: env.PUSH == 'true'
+        run: |
+          IMAGE=${{ steps.ecr.outputs.registry }}/aws-sre-ai-platform/${{ matrix.service }}:${GITHUB_SHA::7}
+          docker tag ${{ matrix.service }}:ci "$IMAGE"
+          docker push "$IMAGE"
+          echo "Pushed $IMAGE" >> "$GITHUB_STEP_SUMMARY"
