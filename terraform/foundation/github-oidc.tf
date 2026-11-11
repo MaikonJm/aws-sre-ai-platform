@@ -27,11 +27,11 @@ data "aws_iam_policy_document" "github_trust" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Only workflows from this repository can assume the role
+    # Only workflows from this exact repository (immutable IDs) can assume the role
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:*"]
+      values   = ["${var.github_oidc_subject_prefix}:*"]
     }
   }
 }
