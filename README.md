@@ -35,13 +35,13 @@ flowchart LR
 
 ## Roadmap
 
-Each phase ships as its own pull request and write-up.
+Each phase ships as its own pull request. Phase 1 runs on AWS; phases 2–4 are code-complete and pass CI, with the end-to-end run on AWS happening in the test session.
 
 - [x] **1. Foundation**: remote state, budget alerts, VPC, Kubernetes cluster, ECR, GitHub Actions with OIDC (no static keys)
 - [x] **2. Application**: orders API and worker in containers, SQS with Dead Letter Queue and alarm, PostgreSQL, images built by CI and pushed to ECR via OIDC
 - [x] **3. Observability and SLOs**: Prometheus, Grafana, SLOs with error budgets and multi-window burn-rate alerts ([docs/slo.md](docs/slo.md))
-- [ ] **4. AI SRE agent**: on alert, collects pods, events, logs, SLIs and queue depth with read-only access, asks Amazon Bedrock (Nova Micro) for a root-cause hypothesis and opens a GitHub issue with a proposed fix; nothing is applied without approval ([docs/sre-agent.md](docs/sre-agent.md)) *(in progress)*
-- [ ] **5. Chaos and post-mortem**: inject failures, measure detection and recovery, publish the post-mortem and the total cost
+- [x] **4. AI SRE agent**: on alert, collects pods, events, logs, SLIs and queue depth with read-only access, asks Amazon Bedrock (Nova Micro) for a root-cause hypothesis and opens a GitHub issue with a proposed fix; nothing is applied without approval ([docs/sre-agent.md](docs/sre-agent.md))
+- [ ] **5. Chaos and post-mortem**: five failure experiments with measured time to detect and recover ([docs/chaos.md](docs/chaos.md)), blameless post-mortem ([template](docs/postmortems/TEMPLATE.md)) and the total cost *(experiments ready; results pending the end-to-end test session)*
 
 ## Repository structure
 
@@ -63,6 +63,7 @@ scripts/
   deploy-observability.sh # Prometheus, Grafana, SLO rules and dashboard
   generate-traffic.sh     # steady order traffic for the dashboards
   deploy-agent.sh         # AI SRE agent + Alertmanager webhook
+  chaos.sh                # inject a failure, measure time to detect and to recover
 docs/
   adr/           # architecture decision records
 .github/workflows/
@@ -167,6 +168,22 @@ Optional: a fine-grained GitHub token with **Issues: read and write** on this re
 GITHUB_TOKEN=github_pat_... ./scripts/deploy-agent.sh
 kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE=0.3   # trigger the fast-burn alert
 # a few minutes later: a new issue "[Incident] OrdersApiAvailabilityFastBurn: ..."
+```
+
+### 8. Chaos experiments
+
+```bash
+./scripts/generate-traffic.sh 30 5 &        # keep traffic flowing
+./scripts/chaos.sh start api-errors          # waits until the alert fires
+./scripts/chaos.sh stop api-errors           # waits until it resolves
+```
+
+Scenarios and results: [docs/chaos.md](docs/chaos.md). Measurements are appended to `chaos-results.log`.
+
+### Tear down
+
+```bash
+cd terraform/cluster && terraform destroy    # end of every session
 ```
 
 ## Design decisions
