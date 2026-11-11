@@ -71,7 +71,14 @@ jobs:
       - name: Push image (tag = commit SHA)
         if: env.PUSH == 'true'
         run: |
-          IMAGE=${{ steps.ecr.outputs.registry }}/aws-sre-ai-platform/${{ matrix.service }}:${GITHUB_SHA::7}
+          REPO=aws-sre-ai-platform/${{ matrix.service }}
+          TAG=${GITHUB_SHA::7}
+          # Tags are immutable: re-running the workflow for the same commit is a no-op
+          if aws ecr describe-images --repository-name "$REPO" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+            echo "$REPO:$TAG already in ECR, skipping" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          IMAGE=${{ steps.ecr.outputs.registry }}/$REPO:$TAG
           docker tag ${{ matrix.service }}:ci "$IMAGE"
           docker push "$IMAGE"
           echo "Pushed $IMAGE" >> "$GITHUB_STEP_SUMMARY"
