@@ -1,8 +1,10 @@
 """Orders API: stores an order in PostgreSQL and publishes it to SQS."""
 
+import asyncio
 import json
 import logging
 import os
+import random
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -53,9 +55,22 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Orders API", lifespan=lifespan)
 
 
+# Fault injection for chaos tests (phase 5). Both default to off and are
+# toggled with: kubectl -n orders set env deployment/orders-api FAULT_...=
+FAULT_LATENCY_MS = int(os.environ.get("FAULT_LATENCY_MS", "0"))
+FAULT_ERROR_RATE = float(os.environ.get("FAULT_ERROR_RATE", "0"))
+
+
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
+    if request.url.path.startswith("/orders"):
+        if FAULT_LATENCY_MS:
+            await asyncio.sleep(FAULT_LATENCY_MS / 1000)
+        if random.random() < FAULT_ERROR_RATE:
+            response = Response(status_code=500, content="injected fault")
+            REQUESTS.labels(request.method, "/orders", "500").observe(time.perf_counter() - start)
+            return response
     response = await call_next(request)
     route = request.scope.get("route")
     REQUESTS.labels(

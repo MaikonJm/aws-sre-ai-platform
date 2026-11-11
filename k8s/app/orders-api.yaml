@@ -29,6 +29,7 @@ spec:
           image: orders-api # replaced by kustomize with the ECR image
           ports:
             - containerPort: 8000
+              name: http
           envFrom:
             - configMapRef:
                 name: app-config
