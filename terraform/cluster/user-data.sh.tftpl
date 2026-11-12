@@ -9,16 +9,15 @@ echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' > /etc/profile.d/k3s.sh
 
 # ---------- Tools ----------
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-# snapd may still be seeding right after boot ("unable to contact snap
-# store"), which aborted this script in the second test session: wait for
-# the seed and retry instead of failing.
-snap wait system seed.loaded || true
-for attempt in 1 2 3 4 5 6; do
-  snap install aws-cli --classic && break
-  echo "snap install failed (attempt $attempt), retrying in 10s"
-  sleep 10
-done
-command -v aws
+# AWS CLI v2 from the official installer. The snap package failed twice
+# at boot in the second test session (snap store unreachable/timeouts),
+# which aborted this script before the ECR pull-secret timer was set up.
+apt-get update -qq
+apt-get install -y -qq unzip
+curl -sSL --retry 5 https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+unzip -q -o /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install --update
+rm -rf /tmp/aws /tmp/awscliv2.zip
 
 # ---------- ECR pull secret ----------
 # ECR tokens expire after 12 hours. A systemd timer refreshes the
