@@ -9,7 +9,16 @@ echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' > /etc/profile.d/k3s.sh
 
 # ---------- Tools ----------
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-snap install aws-cli --classic
+# snapd may still be seeding right after boot ("unable to contact snap
+# store"), which aborted this script in the second test session: wait for
+# the seed and retry instead of failing.
+snap wait system seed.loaded || true
+for attempt in 1 2 3 4 5 6; do
+  snap install aws-cli --classic && break
+  echo "snap install failed (attempt $attempt), retrying in 10s"
+  sleep 10
+done
+command -v aws
 
 # ---------- ECR pull secret ----------
 # ECR tokens expire after 12 hours. A systemd timer refreshes the
