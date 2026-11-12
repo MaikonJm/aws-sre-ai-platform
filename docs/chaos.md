@@ -12,15 +12,17 @@ Each experiment states a hypothesis, injects one failure with `scripts/chaos.sh`
 
 ## Results
 
-Filled in from `chaos-results.log` during the test session.
+From `chaos-results.log`. Session 1 (11 Nov 2026) covered scenario 1; the [post-mortem](postmortems/2026-11-11-first-end-to-end-test.md) has the timeline and the four bugs the run uncovered.
 
 | # | Time to detect | Time to recover | Agent diagnosis correct? | Issue |
 | --- | --- | --- | --- | --- |
-| 1 | | | | |
+| 1 | 135 s | 315 s | First run no (blamed stale probe failures); after [deterministic signals](sre-agent.md#deterministic-signals), yes: `FAULT_ERROR_RATE=0.5`, high confidence | [#14](https://github.com/MaikonJm/aws-sre-ai-platform/issues/14) |
 | 2 | | | | |
 | 3 | | | | |
 | 4 | | | | |
 | 5 | | | | |
+
+Run every scenario with one traffic generator active for longer than the experiment: without requests the SLIs have no data and the alerts resolve by themselves. `chaos.sh start` warns when no generator is running.
 
 ## Why detection takes minutes, not seconds
 
