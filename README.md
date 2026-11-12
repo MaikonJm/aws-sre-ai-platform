@@ -2,6 +2,8 @@
 
 > An order-processing platform on AWS, built end to end as code, with SLO-based observability and an **AI SRE agent** that investigates incidents and proposes fixes that only ship after human approval.
 
+📝 **Write-up (PT-BR):** [Meu agente de IA errou o diagnóstico. O teste de caos mostrou por quê.](https://medium.com/@maikonjm/meu-agente-de-ia-errou-o-diagn%C3%B3stico-o-teste-de-caos-mostrou-por-qu%C3%AA-be4c60fb1d70)
+
 ![Status](https://img.shields.io/badge/status-complete-brightgreen)
 ![Terraform](https://img.shields.io/badge/Terraform-844FBA?logo=terraform&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-232F3E?logo=amazonwebservices&logoColor=white)
