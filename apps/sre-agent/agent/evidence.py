@@ -19,7 +19,7 @@ PROMETHEUS_URL = os.environ.get(
     "PROMETHEUS_URL", "http://monitoring-kube-prometheus-prometheus.monitoring:9090"
 )
 QUEUE_NAMES = [q for q in os.environ.get("QUEUE_NAMES", "").split(",") if q]
-LOG_LINES = int(os.environ.get("LOG_LINES", "40"))
+LOG_LINES = int(os.environ.get("LOG_LINES", "500"))
 EVENT_WINDOW_MINUTES = int(os.environ.get("EVENT_WINDOW_MINUTES", "15"))
 
 SLI_QUERIES = {
@@ -106,11 +106,25 @@ def kubernetes_evidence() -> dict:
             targets.append(pod)
     for name in targets[:4]:
         try:
-            logs[name] = core.read_namespaced_pod_log(name, NAMESPACE, tail_lines=LOG_LINES)[-4000:]
+            raw = core.read_namespaced_pod_log(name, NAMESPACE, tail_lines=LOG_LINES)
+            logs[name] = condense_log(raw)
         except client.ApiException as exc:
             logs[name] = f"<logs unavailable: {exc.reason}>"
 
     return {"pods": pods, "warning_events": events, "deployments": deployments, "logs": logs}
+
+
+def condense_log(raw: str, errors: int = 15, tail: int = 10) -> str:
+    """Error lines from a long window plus the last few lines.
+
+    The worker logs one line per order (~5/s), so a 40-line tail covered
+    8 seconds and the "invalid amount" errors from minutes earlier were
+    gone (second test session, poison-message).
+    """
+    lines = raw.splitlines()
+    error_lines = [line for line in lines if "ERROR" in line or "Traceback" in line][-errors:]
+    recent = [line for line in lines[-tail:] if line not in error_lines]
+    return "\n".join(error_lines + recent)[-4000:]
 
 
 def prometheus_evidence() -> dict:

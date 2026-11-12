@@ -107,3 +107,14 @@ def test_detect_signals_surfaces_latest_log_error():
     assert len(signals) == 1
     assert signals[0].startswith("2 error lines in worker-abc logs, latest:")
     assert "invalid amount -1" in signals[0]
+
+
+def test_condense_log_keeps_old_errors_and_recent_lines():
+    from agent.evidence import condense_log
+
+    lines = ['{"level":"ERROR","msg":"order b has invalid amount -1"}']
+    lines += [f'{{"level":"INFO","msg":"order {i} processed"}}' for i in range(300)]
+    out = condense_log("\n".join(lines)).splitlines()
+    assert out[0] == '{"level":"ERROR","msg":"order b has invalid amount -1"}'
+    assert out[-1] == '{"level":"INFO","msg":"order 299 processed"}'
+    assert len(out) == 11
