@@ -52,7 +52,10 @@ alertmanager:
       - name: sre-agent
         webhook_configs:
           - url: http://sre-agent.sre-agent.svc:8080/alertmanager
-            send_resolved: false
+            # true so the notification log records the resolution; with false, a
+            # re-fired alert matches the last notification and is not resent for
+            # repeat_interval (4h). The agent ignores resolved alerts.
+            send_resolved: true
 
 grafana:
   admin:
