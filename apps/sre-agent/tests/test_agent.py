@@ -55,3 +55,16 @@ def test_detect_signals_tolerates_unavailable_evidence():
     from agent.evidence import detect_signals
 
     assert detect_signals({"kubernetes": "<unavailable: boom>", "queues": "<unavailable>"}) == []
+
+
+def test_parse_response_discards_interactive_commands():
+    text = '{"summary": "errors", "recommended_actions": ["Disable fault injection"], "proposed_command": "kubectl edit deployment orders-api --namespace orders"}'
+    report = parse_response(text)
+    assert report["proposed_command"] == ""
+    assert report["recommended_actions"][0] == "Disable fault injection"
+    assert "kubectl edit" in report["recommended_actions"][-1]
+
+
+def test_parse_response_keeps_exact_commands():
+    text = '{"proposed_command": "kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE-"}'
+    assert parse_response(text)["proposed_command"] == "kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE-"
