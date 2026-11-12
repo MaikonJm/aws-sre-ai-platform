@@ -10,29 +10,9 @@
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  gh[GitHub Actions<br/>tests, Terraform plan,<br/>image build via OIDC] --> ecr[(ECR)]
-  ecr --> k8s
+![Architecture: GitHub Actions with OIDC, ECR, a k3s node in a VPC running the orders API, worker, PostgreSQL, Prometheus, Alertmanager, Grafana and the AI SRE agent; SQS with DLQ, CloudWatch alarm and SNS; Amazon Bedrock; incident issues on GitHub](docs/images/architecture.png)
 
-  subgraph aws[AWS account]
-    subgraph k8s[k3s on EC2]
-      api[Orders API]
-      worker[Worker]
-      pg[(PostgreSQL)]
-      obs[Prometheus + Alertmanager<br/>+ Grafana]
-      agent[AI SRE agent]
-    end
-    sqs[(SQS + DLQ)]
-    bedrock[Amazon Bedrock<br/>Nova Micro]
-  end
-
-  api --> pg
-  api --> sqs --> worker --> pg
-  obs -- burn-rate alert --> agent
-  agent --> bedrock
-  agent -- incident issue + proposed fix --> human[Engineer approves]
-```
+<sub>Generated from code with the official AWS icons: [docs/diagrams/architecture.py](docs/diagrams/architecture.py).</sub>
 
 ## Roadmap
 
@@ -67,6 +47,7 @@ scripts/
   chaos.sh                # inject a failure, measure time to detect and to recover
 docs/
   adr/           # architecture decision records
+  diagrams/      # architecture diagram as code (official AWS icons)
   postmortems/   # blameless post-mortems from the test sessions
 .github/workflows/
 ```
