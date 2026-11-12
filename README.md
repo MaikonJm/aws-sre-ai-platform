@@ -2,7 +2,7 @@
 
 > An order-processing platform on AWS, built end to end as code, with SLO-based observability and an **AI SRE agent** that investigates incidents and proposes fixes that only ship after human approval.
 
-![Status](https://img.shields.io/badge/status-in%20progress-yellow)
+![Status](https://img.shields.io/badge/status-complete-brightgreen)
 ![Terraform](https://img.shields.io/badge/Terraform-844FBA?logo=terraform&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-232F3E?logo=amazonwebservices&logoColor=white)
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?logo=kubernetes&logoColor=white)
@@ -16,13 +16,13 @@
 
 ## Roadmap
 
-Each phase ships as its own pull request. Phases 1–4 ran end to end on AWS in the first test session (11 Nov 2026); results and the four bugs it found are in the [post-mortem](docs/postmortems/2026-11-11-first-end-to-end-test.md).
+Each phase ships as its own pull request. All phases ran end to end on AWS in two test sessions (11 and 12 Nov 2026). Together they found and fixed eleven bugs that no unit test would catch; see the post-mortems for [session 1](docs/postmortems/2026-11-11-first-end-to-end-test.md) and [session 2](docs/postmortems/2026-11-12-second-test-session.md).
 
 - [x] **1. Foundation**: remote state, budget alerts, VPC, Kubernetes cluster, ECR, GitHub Actions with OIDC (no static keys)
 - [x] **2. Application**: orders API and worker in containers, SQS with Dead Letter Queue and alarm, PostgreSQL, images built by CI and pushed to ECR via OIDC
 - [x] **3. Observability and SLOs**: Prometheus, Grafana, SLOs with error budgets and multi-window burn-rate alerts ([docs/slo.md](docs/slo.md))
 - [x] **4. AI SRE agent**: on alert, collects pods, events, logs, SLIs and queue depth with read-only access, asks Amazon Bedrock (Nova Micro) for a root-cause hypothesis and opens a GitHub issue with a proposed fix; nothing is applied without approval ([docs/sre-agent.md](docs/sre-agent.md))
-- [ ] **5. Chaos and post-mortem**: five failure experiments with measured time to detect and recover ([docs/chaos.md](docs/chaos.md)) and blameless post-mortems ([first test](docs/postmortems/2026-11-11-first-end-to-end-test.md)) *(1 of 5 scenarios done: `api-errors` detected in 135 s, recovered in 315 s, correct AI diagnosis in [issue #14](https://github.com/MaikonJm/aws-sre-ai-platform/issues/14))*
+- [x] **5. Chaos and post-mortem**: failure experiments with measured time to detect and recover ([docs/chaos.md](docs/chaos.md)) and blameless post-mortems. `api-errors` detected in 135 s, `worker-down` in 225 s (recovered in 45 s), `poison-message` in 150 s; the AI named the right cause in all three after the fixes ([#14](https://github.com/MaikonJm/aws-sre-ai-platform/issues/14), [#26](https://github.com/MaikonJm/aws-sre-ai-platform/issues/26), [#32](https://github.com/MaikonJm/aws-sre-ai-platform/issues/32))
 
 ## Repository structure
 
