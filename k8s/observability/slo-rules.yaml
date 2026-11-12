@@ -77,6 +77,7 @@ spec:
           orders_api:error_ratio:rate5m > (14.4 * 0.005)
         labels:
           severity: page
+          namespace: orders  # sum() drops labels; the Alertmanager route needs this
           slo: availability
         annotations:
           summary: "Orders API is failing requests fast enough to exhaust the 99.5% availability budget in ~2 days"
@@ -88,6 +89,7 @@ spec:
           orders_api:error_ratio:rate30m > (6 * 0.005)
         labels:
           severity: ticket
+          namespace: orders  # sum() drops labels; the Alertmanager route needs this
           slo: availability
         annotations:
           summary: "Orders API is steadily consuming the availability error budget"
@@ -99,6 +101,7 @@ spec:
           orders_api:slow_ratio:rate5m > (14.4 * 0.01)
         labels:
           severity: page
+          namespace: orders  # sum() drops labels; the Alertmanager route needs this
           slo: latency
         annotations:
           summary: "Too many Orders API requests are slower than 250 ms"
@@ -110,6 +113,7 @@ spec:
           orders_api:slow_ratio:rate30m > (6 * 0.01)
         labels:
           severity: ticket
+          namespace: orders  # sum() drops labels; the Alertmanager route needs this
           slo: latency
         annotations:
           summary: "Orders API latency is steadily consuming the latency error budget"
@@ -119,6 +123,7 @@ spec:
         for: 2m
         labels:
           severity: ticket
+          namespace: orders  # sum() drops labels; the Alertmanager route needs this
         annotations:
           summary: "The worker is failing to process orders"
           description: "Failed messages are retried and moved to the DLQ after 3 attempts."
@@ -129,6 +134,7 @@ spec:
         for: 5m
         labels:
           severity: page
+          namespace: orders  # sum() drops labels; the Alertmanager route needs this
         annotations:
           summary: "Orders are being created faster than they are processed"
           description: "The worker may be down or stuck; orders are piling up in SQS."
