@@ -68,3 +68,13 @@ def test_parse_response_discards_interactive_commands():
 def test_parse_response_keeps_exact_commands():
     text = '{"proposed_command": "kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE-"}'
     assert parse_response(text)["proposed_command"] == "kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE-"
+
+
+def test_detect_signals_flags_deployment_scaled_to_zero():
+    from agent.evidence import detect_signals
+
+    evidence = {"kubernetes": {"deployments": [
+        {"name": "worker", "replicas_desired": 0, "replicas_ready": 0, "env": {}},
+        {"name": "orders-api", "replicas_desired": 2, "replicas_ready": 2, "env": {}},
+    ], "pods": []}}
+    assert detect_signals(evidence) == ["Deployment worker is scaled to 0 replicas: nothing is running it"]
