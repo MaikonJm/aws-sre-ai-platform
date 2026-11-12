@@ -44,10 +44,24 @@ CREATE TABLE IF NOT EXISTS orders (
 """
 
 
+DB_STARTUP_ATTEMPTS = int(os.environ.get("DB_STARTUP_ATTEMPTS", "30"))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    with psycopg.connect(DB_DSN) as conn:
-        conn.execute(SCHEMA)
+    # PostgreSQL may still be starting when the API starts (first deploy,
+    # node reboot). Retrying here avoids the restarts seen in the first AWS
+    # test, where the pod crashed until the database was ready.
+    for attempt in range(1, DB_STARTUP_ATTEMPTS + 1):
+        try:
+            with psycopg.connect(DB_DSN) as conn:
+                conn.execute(SCHEMA)
+            break
+        except psycopg.OperationalError as exc:
+            if attempt == DB_STARTUP_ATTEMPTS:
+                raise
+            log.warning(f"database not ready (attempt {attempt}/{DB_STARTUP_ATTEMPTS}): {exc}")
+            await asyncio.sleep(min(2 * attempt, 10))
     log.info("schema ready")
     yield
 
