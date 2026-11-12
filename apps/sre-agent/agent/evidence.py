@@ -71,6 +71,10 @@ def kubernetes_evidence() -> dict:
         when = e.last_timestamp or e.event_time or e.metadata.creation_timestamp
         if e.type == "Warning" and when and when >= cutoff:
             recent.append((when, e))
+    # Probe failures from a rollout that already finished point at pods that
+    # are healthy now; in the second test they misled the model again.
+    healthy = {p["name"] for p in pods if p["ready"] and not p["restarts"] and not p["waiting_reasons"]}
+    recent = [(when, e) for when, e in recent if e.involved_object.name not in healthy]
     recent.sort(key=lambda pair: pair[0])
     events = [
         {"at": when.isoformat(), "reason": e.reason, "object": e.involved_object.name,
@@ -143,7 +147,9 @@ def detect_signals(evidence: dict) -> list[str]:
             for key, value in d.get("env", {}).items():
                 if key.startswith("FAULT_") and value not in ("", "0", "0.0"):
                     signals.append(f"Deployment {d['name']} has fault injection enabled: {key}={value}")
-            if (d.get("replicas_desired") or 0) > d.get("replicas_ready", 0):
+            if d.get("replicas_desired") == 0:
+                signals.append(f"Deployment {d['name']} is scaled to 0 replicas: nothing is running it")
+            elif (d.get("replicas_desired") or 0) > d.get("replicas_ready", 0):
                 signals.append(
                     f"Deployment {d['name']} has {d.get('replicas_ready', 0)}/{d.get('replicas_desired')} replicas ready"
                 )
