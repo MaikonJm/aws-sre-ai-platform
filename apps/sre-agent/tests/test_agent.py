@@ -93,3 +93,17 @@ def test_render_markdown_redacts_aws_account_ids():
 def test_parse_response_discards_scale_with_image_flag():
     text = '{"proposed_command": "kubectl -n orders scale deployment/worker --replicas=2 --image=repo/worker:1"}'
     assert parse_response(text)["proposed_command"] == ""
+
+
+def test_detect_signals_surfaces_latest_log_error():
+    from agent.evidence import detect_signals
+
+    logs = (
+        '{"level":"INFO","msg":"processed order a"}\n'
+        '{"level":"ERROR","msg":"order b failed on attempt 1: order b has invalid amount -1"}\n'
+        '{"level":"ERROR","msg":"order b failed on attempt 2: order b has invalid amount -1"}\n'
+    )
+    signals = detect_signals({"kubernetes": {"deployments": [], "pods": [], "logs": {"worker-abc": logs}}})
+    assert len(signals) == 1
+    assert signals[0].startswith("2 error lines in worker-abc logs, latest:")
+    assert "invalid amount -1" in signals[0]

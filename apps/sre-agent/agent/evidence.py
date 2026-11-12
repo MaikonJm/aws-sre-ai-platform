@@ -95,9 +95,16 @@ def kubernetes_evidence() -> dict:
             "env": env,
         })
 
+    # Unhealthy pods first, then one pod of each workload, so the worker's
+    # log is always there: in the second test the two API pods filled the
+    # slots and the "invalid amount" errors never reached the model.
     logs = {}
-    targets = unhealthy or [p["name"] for p in pods if p["name"].startswith(("orders-api", "worker"))][:2]
-    for name in targets[:3]:
+    targets = list(unhealthy)
+    for prefix in ("worker", "orders-api"):
+        pod = next((p["name"] for p in pods if p["name"].startswith(prefix)), None)
+        if pod and pod not in targets:
+            targets.append(pod)
+    for name in targets[:4]:
         try:
             logs[name] = core.read_namespaced_pod_log(name, NAMESPACE, tail_lines=LOG_LINES)[-4000:]
         except client.ApiException as exc:
@@ -157,6 +164,10 @@ def detect_signals(evidence: dict) -> list[str]:
             for reason in p.get("waiting_reasons", []):
                 if reason in ("CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError"):
                     signals.append(f"Pod {p['name']} is waiting: {reason}")
+        for pod, text in k8s.get("logs", {}).items():
+            errors = [line for line in str(text).splitlines() if "ERROR" in line or "Traceback" in line]
+            if errors:
+                signals.append(f"{len(errors)} error lines in {pod} logs, latest: {errors[-1][:240]}")
     queues = evidence.get("queues")
     if isinstance(queues, dict):
         for name, attrs in queues.items():
