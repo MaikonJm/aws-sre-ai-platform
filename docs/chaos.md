@@ -12,15 +12,15 @@ Each experiment states a hypothesis, injects one failure with `scripts/chaos.sh`
 
 ## Results
 
-From `chaos-results.log`. Session 1 (11 Nov 2026) covered scenario 1; the [post-mortem](postmortems/2026-11-11-first-end-to-end-test.md) has the timeline and the four bugs the run uncovered.
+From `chaos-results.log`. Session 1 (11 Nov 2026) covered scenario 1 and session 2 (12 Nov) scenarios 3 and 4; the post-mortems ([session 1](postmortems/2026-11-11-first-end-to-end-test.md), [session 2](postmortems/2026-11-12-second-test-session.md)) have the timelines and the eleven bugs the runs uncovered.
 
 | # | Time to detect | Time to recover | Agent diagnosis correct? | Issue |
 | --- | --- | --- | --- | --- |
-| 1 | 135 s | 315 s | First run no (blamed stale probe failures); after [deterministic signals](sre-agent.md#deterministic-signals), yes: `FAULT_ERROR_RATE=0.5`, high confidence | [#14](https://github.com/MaikonJm/aws-sre-ai-platform/issues/14) |
-| 2 | | | | |
-| 3 | | | | |
-| 4 | | | | |
-| 5 | | | | |
+| 1 | 135 s | 315 s | First run no (stale probe failures); after [deterministic signals](sre-agent.md#deterministic-signals), yes: `FAULT_ERROR_RATE=0.5`, high confidence | [#14](https://github.com/MaikonJm/aws-sre-ai-platform/issues/14) |
+| 2 | not run | | | |
+| 3 | 225 s (`OrdersWorkerUnavailable`) | 45 s | First run no (probe failures, `rollout restart`); after the scaled-to-zero signal, yes, with `kubectl -n orders scale deployment/worker --replicas=1` | [#26](https://github.com/MaikonJm/aws-sre-ai-platform/issues/26) |
+| 4 | 150 s (+ DLQ alarm e-mail ~2 min later) | n/a: messages stay in the DLQ | First two runs vague; after worker logs and a 500-line window, yes: invalid amount -1, high confidence | [#32](https://github.com/MaikonJm/aws-sre-ai-platform/issues/32) |
+| 5 | not run | | | |
 
 Run every scenario with one traffic generator active for longer than the experiment: without requests the SLIs have no data and the alerts resolve by themselves. `chaos.sh start` warns when no generator is running.
 
