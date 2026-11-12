@@ -52,7 +52,11 @@ def parse_response(text: str) -> dict:
         report["confidence"] = "low"
     command = str(report["proposed_command"]).strip()
     # An interactive command cannot be reviewed or applied as written.
-    if re.search(r"\bkubectl\s+(?:\S+\s+)*(edit|exec\s+-it|attach)\b", command):
+    # Interactive commands cannot be reviewed as written; "scale" takes no
+    # --image flag (the model invented one in the second test session).
+    if re.search(r"\bkubectl\s+(?:\S+\s+)*(edit|exec\s+-it|attach)\b", command) or (
+        re.search(r"\bkubectl\b.*\bscale\b", command) and "--image" in command
+    ):
         report["recommended_actions"] = [*report["recommended_actions"], f"Model proposed an interactive command, discarded: {command}"]
         command = ""
     report["proposed_command"] = command

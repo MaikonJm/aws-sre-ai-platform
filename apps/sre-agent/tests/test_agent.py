@@ -78,3 +78,18 @@ def test_detect_signals_flags_deployment_scaled_to_zero():
         {"name": "orders-api", "replicas_desired": 2, "replicas_ready": 2, "env": {}},
     ], "pods": []}}
     assert detect_signals(evidence) == ["Deployment worker is scaled to 0 replicas: nothing is running it"]
+
+
+def test_render_markdown_redacts_aws_account_ids():
+    alert = {"labels": {"alertname": "OrdersWorkerUnavailable", "severity": "page"}, "annotations": {}, "startsAt": "now"}
+    report = {"summary": "worker down", "impact": "", "root_cause": "", "confidence": "high",
+              "evidence": ["image 123456789012.dkr.ecr.us-east-1.amazonaws.com/worker"], "recommended_actions": [],
+              "proposed_command": "", "risk": ""}
+    body = render_markdown(alert, report, {}, {"model": "nova"})
+    assert "123456789012" not in body
+    assert "<account-id>.dkr.ecr" in body
+
+
+def test_parse_response_discards_scale_with_image_flag():
+    text = '{"proposed_command": "kubectl -n orders scale deployment/worker --replicas=2 --image=repo/worker:1"}'
+    assert parse_response(text)["proposed_command"] == ""

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 
 import httpx
 
@@ -58,7 +59,9 @@ def render_markdown(alert: dict, report: dict, evidence: dict, usage: dict) -> s
         f"<sub>Tokens: {usage.get('inputTokens', '?')} in / {usage.get('outputTokens', '?')} out · "
         f"Bedrock latency: {usage.get('latency_seconds', '?')} s</sub>",
     ]
-    return "\n".join(lines)
+    # Issues can be public: never publish an AWS account ID, even when the
+    # model copies one from an image URL (found in the second test session).
+    return re.sub(r"\b\d{12}\b", "<account-id>", "\n".join(lines))
 
 
 def publish(alert: dict, report: dict, body: str) -> str | None:
@@ -66,7 +69,8 @@ def publish(alert: dict, report: dict, body: str) -> str | None:
     if not (GITHUB_TOKEN and GITHUB_REPOSITORY):
         log.info("GITHUB_TOKEN not set: report kept in logs and at GET /reports")
         return None
-    title = f"[Incident] {alert.get('labels', {}).get('alertname', 'alert')}: {report['summary']}"[:200]
+    title = f"[Incident] {alert.get('labels', {}).get('alertname', 'alert')}: {report['summary']}"
+    title = re.sub(r"\b\d{12}\b", "<account-id>", title)[:200]
     response = httpx.post(
         f"https://api.github.com/repos/{GITHUB_REPOSITORY}/issues",
         headers={"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"},
