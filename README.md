@@ -12,36 +12,37 @@
 
 ```mermaid
 flowchart LR
-  gh[GitHub Actions<br/>CI + Terraform plan] --> tf[Terraform + ArgoCD]
-  tf --> k8s
+  gh[GitHub Actions<br/>tests, Terraform plan,<br/>image build via OIDC] --> ecr[(ECR)]
+  ecr --> k8s
 
   subgraph aws[AWS account]
-    subgraph k8s[Kubernetes cluster]
+    subgraph k8s[k3s on EC2]
       api[Orders API]
       worker[Worker]
-      obs[Prometheus + Grafana<br/>OpenTelemetry]
+      pg[(PostgreSQL)]
+      obs[Prometheus + Alertmanager<br/>+ Grafana]
       agent[AI SRE agent]
     end
     sqs[(SQS + DLQ)]
-    rds[(RDS PostgreSQL)]
-    bedrock[Amazon Bedrock]
+    bedrock[Amazon Bedrock<br/>Nova Micro]
   end
 
-  api --> sqs --> worker --> rds
-  obs -- alert --> agent
+  api --> pg
+  api --> sqs --> worker --> pg
+  obs -- burn-rate alert --> agent
   agent --> bedrock
   agent -- incident issue + proposed fix --> human[Engineer approves]
 ```
 
 ## Roadmap
 
-Each phase ships as its own pull request. Phase 1 runs on AWS; phases 2–4 are code-complete and pass CI, with the end-to-end run on AWS happening in the test session.
+Each phase ships as its own pull request. Phases 1–4 ran end to end on AWS in the first test session (11 Nov 2026); results and the four bugs it found are in the [post-mortem](docs/postmortems/2026-11-11-first-end-to-end-test.md).
 
 - [x] **1. Foundation**: remote state, budget alerts, VPC, Kubernetes cluster, ECR, GitHub Actions with OIDC (no static keys)
 - [x] **2. Application**: orders API and worker in containers, SQS with Dead Letter Queue and alarm, PostgreSQL, images built by CI and pushed to ECR via OIDC
 - [x] **3. Observability and SLOs**: Prometheus, Grafana, SLOs with error budgets and multi-window burn-rate alerts ([docs/slo.md](docs/slo.md))
 - [x] **4. AI SRE agent**: on alert, collects pods, events, logs, SLIs and queue depth with read-only access, asks Amazon Bedrock (Nova Micro) for a root-cause hypothesis and opens a GitHub issue with a proposed fix; nothing is applied without approval ([docs/sre-agent.md](docs/sre-agent.md))
-- [ ] **5. Chaos and post-mortem**: five failure experiments with measured time to detect and recover ([docs/chaos.md](docs/chaos.md)), blameless post-mortem ([template](docs/postmortems/TEMPLATE.md)) and the total cost *(experiments ready; results pending the end-to-end test session)*
+- [ ] **5. Chaos and post-mortem**: five failure experiments with measured time to detect and recover ([docs/chaos.md](docs/chaos.md)) and blameless post-mortems ([first test](docs/postmortems/2026-11-11-first-end-to-end-test.md)) *(1 of 5 scenarios done: `api-errors` detected in 135 s, recovered in 315 s, correct AI diagnosis in [issue #14](https://github.com/MaikonJm/aws-sre-ai-platform/issues/14))*
 
 ## Repository structure
 
@@ -66,6 +67,7 @@ scripts/
   chaos.sh                # inject a failure, measure time to detect and to recover
 docs/
   adr/           # architecture decision records
+  postmortems/   # blameless post-mortems from the test sessions
 .github/workflows/
 ```
 
@@ -125,8 +127,11 @@ terraform apply
 
 # open a shell on the node (no SSH) and check the cluster
 aws ssm start-session --target $(terraform output -raw instance_id)
+bash -l                     # the session starts in sh; bash -l loads kubectl and the AWS CLI
 kubectl get nodes
 ```
+
+The browser terminal of Session Manager can join lines when several are pasted at once: paste one command at a time.
 
 The cluster is the only stack with an hourly cost: run `terraform destroy` here at the end of every session.
 
@@ -162,23 +167,45 @@ kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE=0.2
 
 ### 7. AI SRE agent
 
-Optional: a fine-grained GitHub token with **Issues: read and write** on this repository only, so the agent can open incident issues.
+Optional, so the agent can open incident issues: a fine-grained GitHub token with **Only select repositories → this repository** and **Issues: read and write** (the default "Public repositories" access is read-only and fails with 403). Store it in **SSM Parameter Store** as a `SecureString` named `/sre-platform/github-token` (console: Systems Manager → Parameter Store; names starting with `aws` are reserved). The token never goes through a terminal or the repository.
 
 ```bash
-GITHUB_TOKEN=github_pat_... ./scripts/deploy-agent.sh
+./scripts/deploy-agent.sh      # reads the token, checks it can open issues, deploys the agent
 kubectl -n orders set env deployment/orders-api FAULT_ERROR_RATE=0.3   # trigger the fast-burn alert
 # a few minutes later: a new issue "[Incident] OrdersApiAvailabilityFastBurn: ..."
 ```
 
+Rotating the token: update the parameter and run `./scripts/deploy-agent.sh` again.
+
 ### 8. Chaos experiments
 
 ```bash
-./scripts/generate-traffic.sh 30 5 &        # keep traffic flowing
+nohup ./scripts/generate-traffic.sh 60 5 > traffic.log 2>&1 &   # one generator, longer than the session
 ./scripts/chaos.sh start api-errors          # waits until the alert fires
 ./scripts/chaos.sh stop api-errors           # waits until it resolves
 ```
 
-Scenarios and results: [docs/chaos.md](docs/chaos.md). Measurements are appended to `chaos-results.log`.
+Keep traffic flowing for the whole experiment: without requests the SLIs have no data and the alerts resolve on their own. Scenarios and results: [docs/chaos.md](docs/chaos.md). Measurements are appended to `chaos-results.log`.
+
+### Troubleshooting
+
+Problems hit in the first test session and how to check them:
+
+| Symptom | Check |
+| --- | --- |
+| Alert fires but the agent gets nothing | `amtool config routes` in the Alertmanager pod; alerts need `namespace="orders"` and `severity` page or ticket |
+| Alert fired again but was not re-sent | Alertmanager keeps a notification log; with `send_resolved: true` a re-fired alert is notified again |
+| Agent log says `403` from GitHub | The token lacks **Issues: read and write** on this repository; `deploy-agent.sh` prints the check result |
+| Agent log says `GITHUB_TOKEN not set` | No parameter at `/sre-platform/github-token` (or another name in `GITHUB_TOKEN_PARAM`) |
+| `kubectl: command not found` on the node | The session is in `sh`; run `bash -l` |
+
+```bash
+# what the agent received and concluded
+kubectl -n sre-agent logs deploy/sre-agent | grep -v "healthz\|metrics\|httpx"
+# alerts currently in Alertmanager
+kubectl -n monitoring exec alertmanager-monitoring-kube-prometheus-alertmanager-0 -c alertmanager -- \
+  amtool alert query --alertmanager.url=http://localhost:9093
+```
 
 ### Tear down
 
@@ -201,6 +228,7 @@ cd terraform/cluster && terraform destroy    # end of every session
 | Idempotent worker | An order already processed is skipped, so SQS at-least-once delivery is safe. |
 | PostgreSQL in the cluster | No RDS hourly cost; trade-offs in [ADR 0002](docs/adr/0002-database-and-pod-credentials.md). |
 | AI agent recommends, humans decide | Read-only RBAC, one Bedrock model, fixed JSON output; fixes are proposed in an issue, never applied ([docs/sre-agent.md](docs/sre-agent.md)). |
+| Deterministic signals before the LLM | Code flags fault-injection env vars, missing replicas, waiting pods and DLQ messages first; the small model starts from facts instead of searching a large JSON. |
 | SLO-based alerting | Pages on error-budget burn rate (14.4x / 6x, two windows each), not on single errors ([docs/slo.md](docs/slo.md)). |
 | Hardened pods | Non-root, read-only root filesystem, no Linux capabilities, resource limits, probes. |
 | No SSH, no public Kubernetes API | Access through SSM Session Manager; only ports 80/443 are open. |

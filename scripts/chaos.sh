@@ -65,6 +65,12 @@ recover() {
 
 case "$ACTION" in
   start)
+    # Without traffic the SLIs have no data and burn-rate alerts resolve on
+    # their own, which looked like a broken pipeline in the first test.
+    if ! pgrep -f generate-traffic.sh >/dev/null; then
+      echo "WARNING: no traffic generator running. Start one first:" >&2
+      echo "  nohup ./scripts/generate-traffic.sh 60 5 > traffic.log 2>&1 &" >&2
+    fi
     echo "$(date -Is) START $SCENARIO (expecting $EXPECTED)" | tee -a "$LOG"
     inject
     echo -n "Waiting for $EXPECTED to fire" >&2
