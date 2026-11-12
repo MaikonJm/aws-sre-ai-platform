@@ -10,7 +10,10 @@ spec:
       rules:
       - record: orders_api:error_ratio:rate5m
         expr: |
-          sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*",status=~"5.."}[5m]))
+          (
+            sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*",status=~"5.."}[5m]))
+            or vector(0)  # no 5xx series yet means zero errors, not "no data"
+          )
           /
           sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*"}[5m]))
       - record: orders_api:slow_ratio:rate5m
@@ -22,7 +25,10 @@ spec:
           )
       - record: orders_api:error_ratio:rate30m
         expr: |
-          sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*",status=~"5.."}[30m]))
+          (
+            sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*",status=~"5.."}[30m]))
+            or vector(0)  # no 5xx series yet means zero errors, not "no data"
+          )
           /
           sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*"}[30m]))
       - record: orders_api:slow_ratio:rate30m
@@ -34,7 +40,10 @@ spec:
           )
       - record: orders_api:error_ratio:rate1h
         expr: |
-          sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*",status=~"5.."}[1h]))
+          (
+            sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*",status=~"5.."}[1h]))
+            or vector(0)  # no 5xx series yet means zero errors, not "no data"
+          )
           /
           sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*"}[1h]))
       - record: orders_api:slow_ratio:rate1h
@@ -46,7 +55,10 @@ spec:
           )
       - record: orders_api:error_ratio:rate6h
         expr: |
-          sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*",status=~"5.."}[6h]))
+          (
+            sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*",status=~"5.."}[6h]))
+            or vector(0)  # no 5xx series yet means zero errors, not "no data"
+          )
           /
           sum(rate(http_request_duration_seconds_count{namespace="orders",route=~"/orders.*"}[6h]))
       - record: orders_api:slow_ratio:rate6h
