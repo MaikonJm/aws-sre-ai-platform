@@ -1,5 +1,7 @@
 # AWS SRE AI Platform
 
+![AWS SRE AI Platform: my AI agent got the diagnosis wrong, and chaos testing showed why](docs/images/cover.png)
+
 > An order-processing platform on AWS, built end to end as code, with SLO-based observability and an **AI SRE agent** that investigates incidents and proposes fixes that only ship after human approval.
 
 📝 **Write-up (PT-BR):** [Meu agente de IA errou o diagnóstico. O teste de caos mostrou por quê.](https://medium.com/@maikonjm/meu-agente-de-ia-errou-o-diagn%C3%B3stico-o-teste-de-caos-mostrou-por-qu%C3%AA-be4c60fb1d70)
@@ -15,6 +17,10 @@
 ![Architecture: GitHub Actions with OIDC, ECR, a k3s node in a VPC running the orders API, worker, PostgreSQL, Prometheus, Alertmanager, Grafana and the AI SRE agent; SQS with DLQ, CloudWatch alarm and SNS; Amazon Bedrock; incident issues on GitHub](docs/images/architecture.png)
 
 <sub>Generated from code with the official AWS icons: [docs/diagrams/architecture.py](docs/diagrams/architecture.py).</sub>
+
+### An incident, step by step
+
+![Animated incident path: failure, Prometheus burn-rate alert, Alertmanager webhook, AI agent collecting read-only evidence, Amazon Bedrock diagnosis, GitHub issue, human approval](docs/images/incident-flow.gif)
 
 ## Roadmap
 
