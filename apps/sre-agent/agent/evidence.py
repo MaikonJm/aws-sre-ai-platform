@@ -6,6 +6,7 @@ Prometheus (SLIs) and SQS (queue depth). Nothing is ever changed.
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
 import boto3
 import httpx
@@ -19,6 +20,7 @@ PROMETHEUS_URL = os.environ.get(
 )
 QUEUE_NAMES = [q for q in os.environ.get("QUEUE_NAMES", "").split(",") if q]
 LOG_LINES = int(os.environ.get("LOG_LINES", "40"))
+EVENT_WINDOW_MINUTES = int(os.environ.get("EVENT_WINDOW_MINUTES", "15"))
 
 SLI_QUERIES = {
     "error_ratio_5m": "orders_api:error_ratio:rate5m",
@@ -61,10 +63,19 @@ def kubernetes_evidence() -> dict:
         if not ready or restarts or waiting:
             unhealthy.append(pod.metadata.name)
 
+    # Only recent warnings, oldest first: stale events (e.g. probe failures
+    # during an earlier rollout) misled the model in the first chaos test.
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=EVENT_WINDOW_MINUTES)
+    recent = []
+    for e in core.list_namespaced_event(NAMESPACE).items:
+        when = e.last_timestamp or e.event_time or e.metadata.creation_timestamp
+        if e.type == "Warning" and when and when >= cutoff:
+            recent.append((when, e))
+    recent.sort(key=lambda pair: pair[0])
     events = [
-        {"reason": e.reason, "object": e.involved_object.name, "message": (e.message or "")[:300], "count": e.count}
-        for e in core.list_namespaced_event(NAMESPACE).items
-        if e.type == "Warning"
+        {"at": when.isoformat(), "reason": e.reason, "object": e.involved_object.name,
+         "message": (e.message or "")[:300], "count": e.count}
+        for when, e in recent
     ][-15:]
 
     deployments = []
@@ -119,6 +130,35 @@ def sqs_evidence() -> dict:
     return depths
 
 
+def detect_signals(evidence: dict) -> list[str]:
+    """Deterministic findings computed before the LLM sees anything.
+
+    A small model can miss one line in a large JSON; plain code does not.
+    These go first in the prompt so the model starts from facts.
+    """
+    signals = []
+    k8s = evidence.get("kubernetes")
+    if isinstance(k8s, dict):
+        for d in k8s.get("deployments", []):
+            for key, value in d.get("env", {}).items():
+                if key.startswith("FAULT_") and value not in ("", "0", "0.0"):
+                    signals.append(f"Deployment {d['name']} has fault injection enabled: {key}={value}")
+            if (d.get("replicas_desired") or 0) > d.get("replicas_ready", 0):
+                signals.append(
+                    f"Deployment {d['name']} has {d.get('replicas_ready', 0)}/{d.get('replicas_desired')} replicas ready"
+                )
+        for p in k8s.get("pods", []):
+            for reason in p.get("waiting_reasons", []):
+                if reason in ("CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError"):
+                    signals.append(f"Pod {p['name']} is waiting: {reason}")
+    queues = evidence.get("queues")
+    if isinstance(queues, dict):
+        for name, attrs in queues.items():
+            if isinstance(attrs, dict) and name.endswith("-dlq") and attrs.get("ApproximateNumberOfMessages", 0) > 0:
+                signals.append(f"Dead Letter Queue {name} has {attrs['ApproximateNumberOfMessages']} messages")
+    return signals
+
+
 def collect() -> dict:
     evidence = {}
     for key, fn in (("kubernetes", kubernetes_evidence), ("slis", prometheus_evidence), ("queues", sqs_evidence)):
@@ -127,4 +167,4 @@ def collect() -> dict:
         except Exception as exc:
             log.exception("evidence %s failed", key)
             evidence[key] = f"<unavailable: {exc}>"
-    return evidence
+    return {"signals": detect_signals(evidence), **evidence}
