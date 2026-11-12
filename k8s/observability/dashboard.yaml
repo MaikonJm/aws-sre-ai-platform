@@ -242,7 +242,7 @@ data:
           "targets": [
             {
               "refId": "A",
-              "expr": "clamp_min(sum(increase(orders_created_total{namespace=\"orders\"}[10m])) - sum(increase(orders_processed_total{namespace=\"orders\"}[10m])), 0)",
+              "expr": "clamp_min(sum(increase(orders_created_total{namespace=\"orders\"}[10m])) - (sum(increase(orders_processed_total{namespace=\"orders\"}[10m])) or vector(0)), 0)",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"

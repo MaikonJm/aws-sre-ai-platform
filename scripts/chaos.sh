@@ -18,7 +18,7 @@ PROM="http://$(kubectl -n monitoring get svc monitoring-kube-prometheus-promethe
 declare -A ALERT=(
   [api-errors]=OrdersApiAvailabilityFastBurn
   [api-latency]=OrdersApiLatencyFastBurn
-  [worker-down]=OrdersBacklogGrowing
+  [worker-down]=OrdersWorkerUnavailable
   [poison-message]=OrdersWorkerFailing
   [db-down]=OrdersApiAvailabilityFastBurn
 )

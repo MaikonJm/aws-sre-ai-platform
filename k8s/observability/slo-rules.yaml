@@ -130,7 +130,10 @@ spec:
       - alert: OrdersBacklogGrowing
         expr: |
           sum(increase(orders_created_total{namespace="orders"}[10m]))
-          - sum(increase(orders_processed_total{namespace="orders"}[10m])) > 20
+          - (
+            sum(increase(orders_processed_total{namespace="orders"}[10m]))
+            or vector(0)  # worker gone = nothing processed, not "no data"
+          ) > 20
         for: 5m
         labels:
           severity: page
@@ -138,3 +141,16 @@ spec:
         annotations:
           summary: "Orders are being created faster than they are processed"
           description: "The worker may be down or stuck; orders are piling up in SQS."
+      # Found in the second test: with the worker scaled to 0 its metrics
+      # disappear, and a rule built only on them went quiet ~10 minutes into
+      # the outage. This one reads the deployment state instead.
+      - alert: OrdersWorkerUnavailable
+        expr: |
+          max(kube_deployment_status_replicas_available{namespace="orders",deployment="worker"}) < 1
+        for: 3m
+        labels:
+          severity: page
+          namespace: orders
+        annotations:
+          summary: "No worker replica is available: orders are not being processed"
+          description: "The worker deployment has no available replicas (scaled to 0, crashing or not scheduled)."
